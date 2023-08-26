@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 
 def unrot_eof(stack: xr.DataArray, variance_threshold: float = 0.8, n_modes: int = -1) -> xr.Dataset:
-    """Function to perform rotated empirical othogonal function (eof) on a spatial timeseries
+    """Function to perform empirical othogonal function (eof) on a spatial timeseries
 
     args:
         stack (xr.DataArray): DataArray of spatial temporal values with coord order of (t,y,x)
