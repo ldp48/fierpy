@@ -6,7 +6,7 @@
 
 Python implementation of the Forecasting Inundation Extents using REOF method
 
-Based off of the methods from [Chang et al., 2020](https://doi.org/10.1016/j.rse.2020.111732)
+Based off of the methods from [Chang et al., 2020](https://doi.org/10.1016/j.rse.2020.111732), and [Chang et al., 2023](https://doi.org/10.1016/j.envsoft.2023.105643)
 
 ## Installation
 
