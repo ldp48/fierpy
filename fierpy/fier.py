@@ -37,25 +37,25 @@ def unrot_eof(stack: xr.DataArray, variance_threshold: float = 0.8, n_modes: int
     # extract out some dimension shape information
     shape3d = stack.shape
     spatial_shape = shape3d[1:]
-    shape2d = (shape3d[0],np.prod(spatial_shape))
+    shape2d = (shape3d[0], np.prod(spatial_shape))
 
     # flatten the data from [t,y,x] to [t,...]
     da_flat = xr.DataArray(
         stack.values.reshape(shape2d),
-        coords = [stack.time,np.arange(shape2d[1])],
-        dims=['time','space']
+        coords=[stack.time, np.arange(shape2d[1])],
+        dims=['time', 'space']
     )
-    #logger.debug(da_flat)
-        
+    # logger.debug(da_flat)
+
     ## find the temporal mean for each pixel
     center = da_flat.mean(dim='time')
-    
+
     centered = da_flat - center
-               
+
     # get an eof solver object
     # explicitly set center to false since data is already
-    #solver = Eof(centered,center=False)
-    solver = Eof(centered,center=False)
+    # solver = Eof(centered,center=False)
+    solver = Eof(centered, center=False)
 
     # check if the n_modes keyword is set to a realistic value
     # if not get n_modes based on variance explained
@@ -65,7 +65,7 @@ def unrot_eof(stack: xr.DataArray, variance_threshold: float = 0.8, n_modes: int
     # calculate to spatial eof values
     eof_components = solver.eofs(neofs=n_modes).transpose()
     # get the indices where the eof is valid data
-    non_masked_idx = np.where(np.logical_not(np.isnan(eof_components[:,0])))[0]
+    non_masked_idx = np.where(np.logical_not(np.isnan(eof_components[:, 0])))[0]
 
     # # waiting for release of sklean version >= 0.24
     # # until then have a placeholder function to do the rotation
@@ -75,34 +75,31 @@ def unrot_eof(stack: xr.DataArray, variance_threshold: float = 0.8, n_modes: int
     # get eof with valid data
     eof_components = np.asarray(eof_components)
 
-    
     # project the original time series data on the rotated eofs
-    projected_pcs = np.dot(centered[:,non_masked_idx], eof_components[non_masked_idx,:])
+    projected_pcs = np.dot(centered[:, non_masked_idx], eof_components[non_masked_idx, :])
 
     # reshape the rotated eofs to a 3d array of [y,x,c]
-    spatial = eof_components.reshape(spatial_shape+(n_modes,))
-    
-    
+    spatial = eof_components.reshape(spatial_shape + (n_modes,))
+
     # structure the spatial and temporal eof components in a Dataset
     eof_ds = xr.Dataset(
         {
-            "spatial_modes": (["lat","lon","mode"],spatial),
-            "temporal_modes":(["time","mode"],projected_pcs),
-            "center": (["lat","lon"],center.values.reshape(spatial_shape))
+            "spatial_modes": (["lat", "lon", "mode"], spatial),
+            "temporal_modes": (["time", "mode"], projected_pcs),
+            "center": (["lat", "lon"], center.values.reshape(spatial_shape))
         },
-        coords = {
-            "lon":(["lon"],stack.lon),
-            "lat":(["lat"],stack.lat),
-            "time":stack.time,
-            "mode": np.arange(n_modes)+1
+        coords={
+            "lon": (["lon"], stack.lon),
+            "lat": (["lat"], stack.lat),
+            "time": stack.time,
+            "mode": np.arange(n_modes) + 1
         }
     )
 
     return eof_ds
-    
-    
-def sig_eof_test(stack: xr.DataArray, option: int=1, monte_carlo_iter: int=10):
 
+
+def sig_eof_test(stack: xr.DataArray, option: int = 1, monte_carlo_iter: int = 10):
     """
     Significant test upon the EOF analysis results. The purpose is to find out the significant EOF modes
     to retain for rotation (REOF)
@@ -118,16 +115,16 @@ def sig_eof_test(stack: xr.DataArray, option: int=1, monte_carlo_iter: int=10):
     """
     from sklearn.decomposition import PCA
 
-    fontdict={
-       'weight':'bold',
-       'size':16
+    fontdict = {
+        'weight': 'bold',
+        'size': 16
     }
-    matplotlib.rc('font',**fontdict)
+    matplotlib.rc('font', **fontdict)
 
     time_size = stack.sizes['time']
     lat_size = stack.sizes['lat']
     lon_size = stack.sizes['lon']
-    space_size = lat_size*lon_size
+    space_size = lat_size * lon_size
 
     temporal_mean = np.nanmean(stack.values, axis=0)
 
@@ -137,20 +134,19 @@ def sig_eof_test(stack: xr.DataArray, option: int=1, monte_carlo_iter: int=10):
     flat_da = flat_da - flat_da.mean(axis=0, keepdims=True)
 
     # ----- Record the original index of each pixels inside the AOI to recover the flattened data back to geographical dimension -----
-    flat2geo = np.arange(np.prod(space_size))[aoi_mask_flat].reshape(1,-1)
+    flat2geo = np.arange(np.prod(space_size))[aoi_mask_flat].reshape(1, -1)
 
     # ----- sklearn PCA (Eigenvalue of real data) -----
     pca = PCA(n_components=time_size)
     pcs = pca.fit_transform(flat_da)
     real_lamb = pca.explained_variance_
 
-    if option==1:
+    if option == 1:
 
-        mc_lamb = np.full((time_size,monte_carlo_iter),np.nan)
+        mc_lamb = np.full((time_size, monte_carlo_iter), np.nan)
 
         # ----- Monte Carlo simulation -----
         for i in range(monte_carlo_iter):
-
             # ----- Randomize observation (spatially shuffle the data) -----
             rng = np.random.default_rng()
             obs_temp = rng.permuted(flat_da, axis=1)
@@ -158,44 +154,44 @@ def sig_eof_test(stack: xr.DataArray, option: int=1, monte_carlo_iter: int=10):
             pca = PCA(n_components=time_size)
             pcs = pca.fit_transform(obs_temp)
             eigv = pca.explained_variance_
-            mc_lamb[:,i] = eigv
+            mc_lamb[:, i] = eigv
 
         mc_lamb = np.transpose(mc_lamb)
-        mean_mc_lamb = np.mean(mc_lamb,axis=0)
-        std_mc_lamb = np.std(mc_lamb,axis=0)
+        mean_mc_lamb = np.mean(mc_lamb, axis=0)
+        std_mc_lamb = np.std(mc_lamb, axis=0)
 
-        plt.title('Scree Plot',fontdict=fontdict)
-        plt.plot(np.arange(time_size)+1, real_lamb, marker='+')
-        plt.errorbar(np.arange(time_size)+1, mean_mc_lamb, std_mc_lamb, capsize=1, marker='o', markersize=3)
-        plt.legend(['From real data','From MonteCarlo sim.'])
-        plt.xlabel('Mode',fontdict=fontdict)
-        plt.ylabel('Eigenvalue',fontdict=fontdict)
+        plt.title('Scree Plot', fontdict=fontdict)
+        plt.plot(np.arange(time_size) + 1, real_lamb, marker='+')
+        plt.errorbar(np.arange(time_size) + 1, mean_mc_lamb, std_mc_lamb, capsize=1, marker='o', markersize=3)
+        plt.legend(['From real data', 'From MonteCarlo sim.'])
+        plt.xlabel('Mode', fontdict=fontdict)
+        plt.ylabel('Eigenvalue', fontdict=fontdict)
         plt.show()
 
         sig_bool = real_lamb > mean_mc_lamb
-        sig_mode = (np.argwhere(sig_bool==False)[0])[0]
+        sig_mode = (np.argwhere(sig_bool == False)[0])[0]
 
-    elif option==2:
-        lamb_err = real_lamb*np.sqrt(2/time_size)
+    elif option == 2:
+        lamb_err = real_lamb * np.sqrt(2 / time_size)
         lower_lamb = real_lamb - lamb_err
         upper_lamb = real_lamb + lamb_err
 
         real_lamb_temp = real_lamb.copy()
 
         sig_bool = lower_lamb[:-1] > upper_lamb[1:]
-        sig_mode = (np.argwhere(sig_bool==False)[0])[0]
+        sig_mode = (np.argwhere(sig_bool == False)[0])[0]
 
-        plt.figure(figsize=(6,5))
-        plt.errorbar(np.arange(len(real_lamb))+1, real_lamb, yerr=lamb_err, capsize=5, marker='o', markersize=3)
+        plt.figure(figsize=(6, 5))
+        plt.errorbar(np.arange(len(real_lamb)) + 1, real_lamb, yerr=lamb_err, capsize=5, marker='o', markersize=3)
         plt.plot([sig_mode, sig_mode], [np.max(upper_lamb), np.min(lower_lamb)], color='r')
         plt.ylabel('Eigenvalue', fontdict=fontdict)
         plt.xlabel('Mode', fontdict=fontdict)
         plt.show()
 
     return sig_mode
-                                                           
-    
-def find_hydro_mode(eof_stack: xr.Dataset, hydro_stack: xr.DataArray, r_thrd: float=0.5) -> xr.Dataset:
+
+
+def find_hydro_mode(eof_stack: xr.Dataset, hydro_stack: xr.DataArray, r_thrd: float = 0.5) -> xr.Dataset:
     """
     Calculate the correlation between temporal patterns and hydrological data.
     This helps determine the water-related mode. By default,  >=0.5 is considered to be correlated.
@@ -221,35 +217,34 @@ def find_hydro_mode(eof_stack: xr.Dataset, hydro_stack: xr.DataArray, r_thrd: fl
     time_tpc = eof_stack.temporal_modes.sel(mode=int(1)).time
     time_hydro = hydro_stack[0].time
     comm_indx_hydro = time_hydro.isin(time_tpc)
-    comm_indx_tpc = time_tpc.isin(hydro_stack[:,comm_indx_hydro.values].time)
-    #print(hydro_stack[:,comm_indx_hydro.values].time.values)
+    comm_indx_tpc = time_tpc.isin(hydro_stack[:, comm_indx_hydro.values].time)
+    # print(hydro_stack[:,comm_indx_hydro.values].time.values)
     hydro_site = hydro_stack.site.values
-    hydro_stack = hydro_stack[:,comm_indx_hydro.values].values
-
+    hydro_stack = hydro_stack[:, comm_indx_hydro.values].values
 
     n = hydro_stack.shape[-1]
-    p_dist = stats.beta(n/2 - 1, n/2 - 1, loc=-1, scale=2)
+    p_dist = stats.beta(n / 2 - 1, n / 2 - 1, loc=-1, scale=2)
 
     # ----- Instead of using FOR, see if it is possible to vectorize the process -----
     for ct_mode in range(mode_num):
         # get mode of tpc
-        tpc = eof_stack.temporal_modes.sel(mode=int(ct_mode+1))[comm_indx_tpc]
-        tpc = tpc.expand_dims(dim='site',axis=0).values.reshape(1,-1)
+        tpc = eof_stack.temporal_modes.sel(mode=int(ct_mode + 1))[comm_indx_tpc]
+        tpc = tpc.expand_dims(dim='site', axis=0).values.reshape(1, -1)
 
         r_da = np.concatenate((tpc, hydro_stack), axis=0)
-        r_mode = np.expand_dims((pd.DataFrame(np.transpose(r_da)).corr(method='pearson').values[1:,0]), axis=1)
-        p_mode = 2*p_dist.cdf(-abs(r_mode))
+        r_mode = np.expand_dims((pd.DataFrame(np.transpose(r_da)).corr(method='pearson').values[1:, 0]), axis=1)
+        p_mode = 2 * p_dist.cdf(-abs(r_mode))
 
-        if ct_mode==0:
+        if ct_mode == 0:
             r = r_mode
             p = p_mode
         else:
-            r = np.concatenate((r,r_mode), axis=1)
-            p = np.concatenate((p,p_mode), axis=1)
+            r = np.concatenate((r, r_mode), axis=1)
+            p = np.concatenate((p, p_mode), axis=1)
 
     indx_max_r_site = np.nanargmax(np.abs(r), axis=0)
-    r_temp = r[( indx_max_r_site, list(range(mode_num)) )]
-    p_temp = p[( indx_max_r_site, list(range(mode_num)) )]
+    r_temp = r[(indx_max_r_site, list(range(mode_num)))]
+    p_temp = p[(indx_max_r_site, list(range(mode_num)))]
 
     indx_p_sig = p_temp <= 0.05
     indx_r_sig = np.abs(r_temp) >= r_thrd
@@ -274,8 +269,8 @@ def find_hydro_mode(eof_stack: xr.Dataset, hydro_stack: xr.DataArray, r_thrd: fl
     )
 
     return tpc_hydro_r
-        
-        
+
+
 def wrap_streamflow(lats: list, lons: list) -> Tuple[xr.DataArray, list]:
     """Function to get and wrap up histroical streamflow data from the GeoGLOWS server
     at different geographic coordinates
@@ -290,21 +285,21 @@ def wrap_streamflow(lats: list, lons: list) -> Tuple[xr.DataArray, list]:
     site_num = len(lats)
     reaches = []
     for ct_site in range(site_num):
-      if ct_site==0:
-        q, reach_id = get_streamflow(lats[ct_site], lons[ct_site])
-        q["time"] = q["time"].dt.strftime("%Y-%m-%d")
-        q.expand_dims(dim='site')
-      else:
-        q1, reach_id = get_streamflow(lats[ct_site], lons[ct_site])
-        q1["time"] = q1["time"].dt.strftime("%Y-%m-%d")        
-        q = xr.concat( (q, q1),dim='site' ) 
-      reaches.append(reach_id)
-      
+        if ct_site == 0:
+            q, reach_id = get_streamflow(lats[ct_site], lons[ct_site])
+            q["time"] = q["time"].dt.strftime("%Y-%m-%d")
+            q.expand_dims(dim='site')
+        else:
+            q1, reach_id = get_streamflow(lats[ct_site], lons[ct_site])
+            q1["time"] = q1["time"].dt.strftime("%Y-%m-%d")
+            q = xr.concat((q, q1), dim='site')
+        reaches.append(reach_id)
+
     # return the series as a xr.DataArray
-    return q, reaches      
+    return q, reaches
 
 
-def reof(stack: xr.DataArray, n_modes: int=4):
+def reof(stack: xr.DataArray, n_modes: int = 4):
     """
     Perform Rotated Empirical Orthogonal Function (REOF) on multi-temporal satellite images
 
@@ -319,7 +314,6 @@ def reof(stack: xr.DataArray, n_modes: int=4):
 
     from sklearn.decomposition import PCA
 
-
     def _ortho_rotation(components, method="varimax", tol=1e-6, max_iter=100):
         """Return rotated components."""
         nrow, ncol = components.shape
@@ -329,10 +323,10 @@ def reof(stack: xr.DataArray, n_modes: int=4):
         for _ in range(max_iter):
             comp_rot = np.dot(components, rotation_matrix)
             if method == "varimax":
-                tmp = comp_rot * np.transpose((comp_rot**2).sum(axis=0) / nrow)
+                tmp = comp_rot * np.transpose((comp_rot ** 2).sum(axis=0) / nrow)
             elif method == "quartimax":
                 tmp = 0
-            u, s, v = np.linalg.svd(np.dot(components.T, comp_rot**3 - tmp))
+            u, s, v = np.linalg.svd(np.dot(components.T, comp_rot ** 3 - tmp))
             rotation_matrix = np.dot(u, v)
             var_new = np.sum(s)
             if var != 0 and var_new < var * (1 + tol):
@@ -341,11 +335,10 @@ def reof(stack: xr.DataArray, n_modes: int=4):
 
         return np.dot(components, rotation_matrix)
 
-
     time_size = stack.sizes['time']
     lat_size = stack.sizes['lat']
     lon_size = stack.sizes['lon']
-    space_size = lat_size*lon_size
+    space_size = lat_size * lon_size
 
     temporal_mean = np.nanmean(stack.values, axis=0)
 
@@ -355,14 +348,14 @@ def reof(stack: xr.DataArray, n_modes: int=4):
     flat_da = flat_da - flat_da.mean(axis=0, keepdims=True)
 
     # ----- Record the original index of each pixels inside the AOI to recover the flattened data back to geographical dimension -----
-    flat2geo = np.arange(np.prod(space_size))[aoi_mask_flat].reshape(1,-1)
+    flat2geo = np.arange(np.prod(space_size))[aoi_mask_flat].reshape(1, -1)
 
     # ----- sklearn PCA -----
     pca = PCA(n_components=n_modes)
     pcs = pca.fit_transform(flat_da)
     pcs = pcs.T
     S = pca.explained_variance_
-    expvar  = pca.explained_variance_ratio_
+    expvar = pca.explained_variance_ratio_
     eofs = (pca.components_).T
 
     rotated_eofs = _ortho_rotation(eofs)
@@ -377,39 +370,38 @@ def reof(stack: xr.DataArray, n_modes: int=4):
     total_rotated_var = rotated_var.cumsum()[-1]
 
     # get variance fraction of each rotated mode
-    rotated_var_frac = ((rotated_var/total_rotated_var)*np.sum(expvar))
+    rotated_var_frac = ((rotated_var / total_rotated_var) * np.sum(expvar))
 
     # ----- Recover the flattened, AOI-only EOF array back to the geographical dimension -----
     rotated_eofs = rotated_eofs.T
     rotated_pcs = rotated_pcs.T
 
-    sort_rotated_var_frac = np.argsort(-1*rotated_var_frac) # Index of explained variance in the descending order
+    sort_rotated_var_frac = np.argsort(-1 * rotated_var_frac)  # Index of explained variance in the descending order
     rotated_var_frac = rotated_var_frac[sort_rotated_var_frac]
 
     # sort modes based on variance fraction of REOF
-    indx_rotated_var_frac_sort = np.expand_dims(sort_rotated_var_frac.data, axis=-1) # Mode X 1
-    rotated_pcs = np.take_along_axis(rotated_pcs,indx_rotated_var_frac_sort,axis=0)
+    indx_rotated_var_frac_sort = np.expand_dims(sort_rotated_var_frac.data, axis=-1)  # Mode X 1
+    rotated_pcs = np.take_along_axis(rotated_pcs, indx_rotated_var_frac_sort, axis=0)
 
-    rotated_eofs = np.take_along_axis(rotated_eofs,indx_rotated_var_frac_sort,axis=0)
-    fill_eofs = np.ones((n_modes, space_size))*np.nan
+    rotated_eofs = np.take_along_axis(rotated_eofs, indx_rotated_var_frac_sort, axis=0)
+    fill_eofs = np.ones((n_modes, space_size)) * np.nan
     for ct_c in np.arange((rotated_eofs.shape[1])):
-        fill_eofs[:,flat2geo[0,ct_c]] = rotated_eofs[:,ct_c]
+        fill_eofs[:, flat2geo[0, ct_c]] = rotated_eofs[:, ct_c]
     rec_eofs_img = fill_eofs.reshape(n_modes, lat_size, lon_size)
 
     # define data with variable attributes
-    data_vars = {'spatial_modes':(['mode','lat','lon'], rec_eofs_img),
-                 'temporal_modes':(['mode','time'], rotated_pcs),
-                 'temporal_mean':(['lat','lon'], temporal_mean),
-                 'explained_var':(['mode'], rotated_var_frac)
-                }
+    data_vars = {'spatial_modes': (['mode', 'lat', 'lon'], rec_eofs_img),
+                 'temporal_modes': (['mode', 'time'], rotated_pcs),
+                 'temporal_mean': (['lat', 'lon'], temporal_mean),
+                 'explained_var': (['mode'], rotated_var_frac)
+                 }
 
     # define coordinates
     coords = {'time': (['time'], stack.time.values),
-              'lat': (['lat'], stack.lat.values,{'units':'degrees North'}),
-              'lon': (['lon'], stack.lon.values,{'units':'degrees East'}),
-              'mode': (['mode'], np.arange(n_modes)+1)
-             }
-
+              'lat': (['lat'], stack.lat.values, {'units': 'degrees North'}),
+              'lon': (['lon'], stack.lon.values, {'units': 'degrees East'}),
+              'mode': (['mode'], np.arange(n_modes) + 1)
+              }
 
     # create dataset
     reof_ds = xr.Dataset(
@@ -432,7 +424,7 @@ def get_streamflow(lat: float, lon: float) -> Tuple[xr.DataArray, int]:
         xr.DataArray: DataArray object of streamflow with datetime coordinates
     """
     # ??? pass lat lon or do it by basin ???
-    reach = streamflow.latlon_to_reach(lat,lon)
+    reach = streamflow.latlon_to_reach(lat, lon)
     # send request for the streamflow data
     q = streamflow.historic_simulation(reach['reach_id'])
 
@@ -460,9 +452,10 @@ def match_dates(original: xr.DataArray, matching: xr.DataArray) -> xr.DataArray:
     """
 
     # return the DataArray with only rows that match dates
-    return original.where(original.time.isin(matching.time),drop=True)
+    return original.where(original.time.isin(matching.time), drop=True)
 
-def fits_to_files(fit_dict: dict,out_dir: str):
+
+def fits_to_files(fit_dict: dict, out_dir: str):
     """Procedure to save coeffient arrays stored in dictionary output from `find_fits()` to npy files
 
     args:
@@ -475,20 +468,22 @@ def fits_to_files(fit_dict: dict,out_dir: str):
     if not out_dir.exists():
         out_dir.mkdir(parents=True)
 
-    for k,v in fit_dict.items():
+    for k, v in fit_dict.items():
         if k.endswith("coeffs"):
             components = k.split("_")
-            name_stem = f"poly_{k.replace('_coeffs','')}"
+            name_stem = f"poly_{k.replace('_coeffs', '')}"
             coeff_file = out_dir / f"{name_stem}.npy"
             np.save(str(coeff_file), v)
 
     return
 
-def find_fits(reof_ds: xr.Dataset, q_df: xr.DataArray, stack: xr.DataArray, train_size: float = 0.7, random_state: int = 0, ):
+
+def find_fits(reof_ds: xr.Dataset, q_df: xr.DataArray, stack: xr.DataArray, train_size: float = 0.7,
+              random_state: int = 0, ):
     """Function to fit multiple polynomial curves on different temporal modes and test results
 
-    """        
-    
+    """
+
     X = q_df
     y = reof_ds.temporal_modes
 
@@ -498,24 +493,24 @@ def find_fits(reof_ds: xr.Dataset, q_df: xr.DataArray, stack: xr.DataArray, trai
     logger.debug(X_train)
     logger.debug(X_test)
 
-    spatial_test = stack.where(stack.time.isin(y_test.time),drop=True)
+    spatial_test = stack.where(stack.time.isin(y_test.time), drop=True)
 
     shape3d = spatial_test.shape
     spatial_shape = shape3d[1:]
-    shape2d = (shape3d[0],np.prod(spatial_shape))
+    shape2d = (shape3d[0], np.prod(spatial_shape))
 
     spatial_test_flat = xr.DataArray(
         spatial_test.values.reshape(shape2d),
-        coords = [spatial_test.time,np.arange(shape2d[1])],
-        dims=['time','space']
+        coords=[spatial_test.time, np.arange(shape2d[1])],
+        dims=['time', 'space']
     )
 
-    non_masked_idx= np.where(np.logical_not(np.isnan(spatial_test_flat[0,:])))[0]
+    non_masked_idx = np.where(np.logical_not(np.isnan(spatial_test_flat[0, :])))[0]
 
     modes = reof_ds.mode.values
 
     fit_dict = dict()
-    dict_keys = ['fit_r2','pred_r','pred_rmse']
+    dict_keys = ['fit_r2', 'pred_r', 'pred_rmse']
 
     for mode in modes:
 
@@ -523,21 +518,19 @@ def find_fits(reof_ds: xr.Dataset, q_df: xr.DataArray, stack: xr.DataArray, trai
         y_train_mode = y_train.sel(mode=mode)
         y_test_mode = y_test.sel(mode=mode)
 
-        for order in range(1,4):
-
+        for order in range(1, 4):
             # apply polynomial fitting
-            c = np.polyfit(X_train,y_train_mode,deg=order)
+            c = np.polyfit(X_train, y_train_mode, deg=order)
             f = np.poly1d(c)
 
             y_pred = f(X_test)
 
-            synth_test = synthesize(reof_ds,X_test,f,mode=mode)                      
-             
+            synth_test = synthesize(reof_ds, X_test, f, mode=mode)
 
             synth_test_flat = xr.DataArray(
                 synth_test.values.reshape(shape2d),
-                coords = [synth_test.time,np.arange(shape2d[1])],
-                dims=['time','space']
+                coords=[synth_test.time, np.arange(shape2d[1])],
+                dims=['time', 'space']
             )
 
             # calculate statistics
@@ -548,30 +541,30 @@ def find_fits(reof_ds: xr.Dataset, q_df: xr.DataArray, stack: xr.DataArray, trai
 
             # check the synthesis stats comapared to observed data
             space_r2 = metrics.r2_score(
-                spatial_test_flat[:,non_masked_idx],
-                synth_test_flat[:,non_masked_idx],
+                spatial_test_flat[:, non_masked_idx],
+                synth_test_flat[:, non_masked_idx],
             )
-            space_r= -999 if space_r2 < 0 else np.sqrt(space_r2)
+            space_r = -999 if space_r2 < 0 else np.sqrt(space_r2)
 
             space_rmse = metrics.mean_squared_error(
-                spatial_test_flat[:,non_masked_idx],
-                synth_test_flat[:,non_masked_idx],
+                spatial_test_flat[:, non_masked_idx],
+                synth_test_flat[:, non_masked_idx],
                 squared=False
             )
 
             # pack the resulting statistics in dictionary for the loop
-            #stats = [temporal_r2,space_r,space_rmse]
+            # stats = [temporal_r2,space_r,space_rmse]
             stats = [temporal_r2, temporal_r, space_rmse]
-            loop_dict = {f"mode{mode}_order{order}_{k}":stats[i] for i,k in enumerate(dict_keys)}
+            loop_dict = {f"mode{mode}_order{order}_{k}": stats[i] for i, k in enumerate(dict_keys)}
             loop_dict[f"mode{mode}_order{order}_coeffs"] = c
             logging.debug(loop_dict)
             # merge the loop dictionary with the larger one
-            fit_dict = {**fit_dict,**loop_dict}
+            fit_dict = {**fit_dict, **loop_dict}
 
     return fit_dict
 
 
-def sel_best_fit(fit_dict: dict, metric: str = "r",ranking: str = "max") -> tuple:
+def sel_best_fit(fit_dict: dict, metric: str = "r", ranking: str = "max") -> tuple:
     """Function to extract out the best fit based on user defined metric and ranking
 
     args:
@@ -582,23 +575,24 @@ def sel_best_fit(fit_dict: dict, metric: str = "r",ranking: str = "max") -> tupl
     returns:
         tuple: tuple of values containg the coefficient key, mode, and coefficients of best fit
     """
-    def max_ranking(old,new):
-        key,ranker = old
-        k,v = new
+
+    def max_ranking(old, new):
+        key, ranker = old
+        k, v = new
         if v > ranker:
             key = k
             ranker = v
-        return (key,ranker)
-    
-    def min_ranking(old,new):
-        key,ranker = old
-        k,v = new
+        return (key, ranker)
+
+    def min_ranking(old, new):
+        key, ranker = old
+        k, v = new
         if v < ranker:
             key = k
             ranker = v
-        return (key,ranker)
+        return (key, ranker)
 
-    if metric not in ["r","r2","rmse"]:
+    if metric not in ["r", "r2", "rmse"]:
         raise ValueError("could not determine metric to rank, options are 'r', 'r2' or 'rmse'")
 
     if ranking == "max":
@@ -610,40 +604,42 @@ def sel_best_fit(fit_dict: dict, metric: str = "r",ranking: str = "max") -> tupl
     else:
         raise ValueError("could not determine ranking, options are 'min' or 'max'")
 
-    ranked = ("",ranker)
-    
-    for k,v in fit_dict.items():
+    ranked = ("", ranker)
+
+    for k, v in fit_dict.items():
         if k.endswith(metric):
-            ranked = ranking_f(ranked,(k,v))
+            ranked = ranking_f(ranked, (k, v))
 
     key_split = ranked[0].split("_")
     ranked_key = "_".join(key_split[:-2] + ["coeffs"])
     coeffs = fit_dict[ranked_key]
-    mode = int(key_split[0].replace("mode",""))
+    mode = int(key_split[0].replace("mode", ""))
 
-    return (ranked_key,mode,coeffs)
+    return (ranked_key, mode, coeffs)
+
 
 def synthesize_indep(reof_ds: xr.Dataset, q_df: xr.DataArray, model_mode_order, model_path='.\\model_path\\'):
     """Function to synthesize data at time of interest and output as DataArray
    
     """
-    mode_list=list(model_mode_order)
+    mode_list = list(model_mode_order)
     for num_mode in mode_list:
-        #for order in range(1,4):
-             
-        f = np.poly1d(np.load(model_path+'\poly'+'{num:0>2}'.format(num=str(num_mode))+'_deg'+'{num:0>2}'.format(num=model_mode_order[str(num_mode)])+'.npy'))
-        #logger.debug('{model_mode_order[str(mode)]:0>2}'+'.npy')
-        
-        
+        # for order in range(1,4):
+
+        f = np.poly1d(np.load(
+            model_path + '\poly' + '{num:0>2}'.format(num=str(num_mode)) + '_deg' + '{num:0>2}'.format(
+                num=model_mode_order[str(num_mode)]) + '.npy'))
+        # logger.debug('{model_mode_order[str(mode)]:0>2}'+'.npy')
+
         y_vals = xr.apply_ufunc(f, q_df)
         logger.debug(y_vals)
-        
-        synth = y_vals * reof_ds.spatial_modes.sel(mode=int(num_mode)) # + reof_ds.center
-        
+
+        synth = y_vals * reof_ds.spatial_modes.sel(mode=int(num_mode))  # + reof_ds.center
+
         synth = synth.astype(np.float32).drop("mode").sortby("time")
 
         return synth
-             
+
 
 def synthesize(reof_ds: xr.Dataset, q_df: xr.DataArray, polynomial: np.poly1d, mode: int = 1) -> xr.DataArray:
     """Function to synthesize data from reof data and regression coefficients.
@@ -661,8 +657,8 @@ def synthesize(reof_ds: xr.Dataset, q_df: xr.DataArray, polynomial: np.poly1d, m
             and spatial modes
     """
 
-    y_vals = xr.apply_ufunc(polynomial,q_df)
-    
+    y_vals = xr.apply_ufunc(polynomial, q_df)
+
     logger.debug(y_vals)
 
     synth = y_vals * reof_ds.spatial_modes.sel(mode=mode) + reof_ds.center
@@ -670,6 +666,5 @@ def synthesize(reof_ds: xr.Dataset, q_df: xr.DataArray, polynomial: np.poly1d, m
     # drop the unneeded mode dimension
     # force sorting by time in case the array is not already
     synth = synth.astype(np.float32).drop("mode").sortby("time")
-    
 
     return synth
